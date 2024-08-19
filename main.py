@@ -5,6 +5,14 @@ from datetime import date, datetime
 import httpx
 from bs4 import BeautifulSoup
 import asyncio
+import openai
+from dotenv import load_dotenv
+import os
+
+# .env 파일에서 환경 변수 로드
+load_dotenv()
+# OpenAI API 키를 환경 변수에서 가져옵니다
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 app = FastAPI()
 
@@ -79,3 +87,41 @@ async def search_dongduk(request: SearchRequest):
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"서버 처리 중 오류 발생: {str(e)}")
+
+
+# 캘린더 이벤트 추출 기능
+class TextRequest(BaseModel):
+    text: str
+
+@app.post("/extract_events/")
+def extract_calendar_events(request: TextRequest):
+    text = request.text
+    
+    try:
+        # ChatCompletion 엔드포인트를 사용하여 gpt-3.5-turbo 모델 호출
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system", 
+                    "content": "You will read the following text and pick out important events to save to the calendar."
+                },
+                {
+                    "role": "system", 
+                    "content": "Please provide the events in the format ['Event Name | Start Date | End Date', 'Event Name | Start Date | End Date']. If a date is preceded by a '~' or the text includes the word '까지' or similar, consider carefully if today is the correct start date."
+                },
+                {
+                    "role": "user", 
+                    "content": text
+                }
+            ],
+            max_tokens=150,
+            temperature=0.5,
+        )
+
+        # 응답에서 캘린더 이벤트를 추출
+        events = response.choices[0].message["content"].strip()
+        return {"events": eval(events)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
